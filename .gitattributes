@@ -1,0 +1,5 @@
+# Release hashes are computed over working-tree bytes; pin LF so they do not depend on the checkout platform.
+* text=auto eol=lf
+*.png binary
+*.pdf binary
+*.sqlite3 binary
