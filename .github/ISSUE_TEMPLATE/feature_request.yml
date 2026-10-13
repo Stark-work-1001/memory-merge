@@ -1,0 +1,11 @@
+name: Feature request
+description: Propose a capability
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes: {label: Problem, description: "What are you trying to do, and what gets in the way?"}
+    validations: {required: true}
+  - type: textarea
+    id: safety
+    attributes: {label: Safety properties affected, description: "Does this touch review, screening, network egress or erasure? See docs/THREAT_MODEL.md."}
