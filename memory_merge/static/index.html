@@ -1,0 +1,6 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Memory Merge · Mind Graph</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body><header><div class="eyebrow">LOCAL MEMORY / EVIDENCE FIRST</div><h1>Memory Merge <span>记忆图谱</span></h1><p>从一次对话，到可追溯的长期记忆。仅显示已审核条目。</p></header>
+<section class="toolbar" aria-label="图谱筛选"><label>项目 <input id="project" value="demo" maxlength="80"></label><button id="load">载入图谱</button><label>筛选 <input id="filter" type="search" placeholder="正文 / 分类"></label><button id="zoomIn" aria-label="放大图谱">＋</button><button id="zoomOut" aria-label="缩小图谱">−</button><button id="reset">复位</button></section>
+<p id="status" role="status" aria-live="polite">准备加载…</p>
+<main><section class="graph-panel"><h2>关系网络 <small>拖动平移 · 滚轮缩放 · 点击查看</small></h2><svg id="graph" viewBox="0 0 900 620" role="img" aria-label="记忆节点与显式关系"><g id="layer"></g></svg><p class="note">supports 支持 · contradicts 冲突 · supersedes 替代 · related 相关。连线是记录的关系，不是自动证明。</p></section><aside><h2>记忆详情</h2><div id="detail">选择节点，查看正文、来源和时间。也可通过下方列表用键盘选择。</div><h2>节点索引</h2><div id="list"></div></aside></main><footer>SQLite 真源 / Markdown 镜像 / 本地只读浏览器界面 · 不加载 CDN，不自动调用模型</footer></body></html>
