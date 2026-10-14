@@ -1,0 +1,15 @@
+.git
+.venv
+venv
+data
+demo-data
+backups
+markdown
+native/target
+bench/results
+**/__pycache__
+*.sqlite3
+*.sqlite3-*
+.env
+*.key
+*.log

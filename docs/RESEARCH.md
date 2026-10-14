@@ -1,8 +1,8 @@
 # Public research summary / 公开研究整理
 
-Research snapshot: 2026-10-13. The reference table and public owners are at the beginning of the [README](<../README.md>). This document is a curated synthesis, not a benchmark ranking or certification of every upstream service. Raw source snapshots and private research context are intentionally not distributed.
+Research snapshot: 2026-10-13. Repositories, commits, licenses and what was taken from each are in [REFERENCES.md](REFERENCES.md); design decisions in [DECISIONS.md](DECISIONS.md). This document is a curated synthesis, not a benchmark ranking or certification of every upstream service. Raw source snapshots and private research context are intentionally not distributed.
 
-调研时点：2026-10-13。参考仓库和公开作者置于[README](<../README.md>)开头。本文件整理选型结论，不构成性能排名或对所有上游服务的认证；不分发原始快照及私人研究上下文。
+调研时点：2026-10-13。参考仓库、提交、许可与借鉴内容见[REFERENCES.md](REFERENCES.md)，设计决策见[DECISIONS.md](DECISIONS.md)。本文件整理选型结论，不构成性能排名或对所有上游服务的认证；不分发原始快照及私人研究上下文。
 
 ## Storage, stacks and model roles / 存储、技术栈与模型角色
 
@@ -45,6 +45,6 @@ RAG是检索生成流程而非存储格式；图边不证明因果；LLM调用�
 5. Use the official MCP SDK, not a custom imitation. Host-specific hooks remain separate integrations. 使用官方SDK，宿主hooks作为独立集成。
 6. Study upstream mechanisms without bundling source or assuming compatible licenses. 研究机制不等于直接合并源码或默认许可相容。
 
-Qwen3-Embedding-0.6B is a candidate for future local evaluation, not a bundled or validated model. Real model quality and upstream performance claims were not reproduced for this release. MRL dimension changes still require compatible indexing and evaluation.
+Update for 0.2: Qwen3-Embedding-0.6B has since been verified (file hashes) and evaluated on this project's dataset; see [MODELS.md](MODELS.md) and [EVALUATION.md](EVALUATION.md). Weights are still not bundled.
 
-Qwen3-Embedding-0.6B只是后续本地评测候选，未捆绑或验证；本发布未复现真实模型质量及上游性能声明。MRL维度变化仍需兼容索引与重新评测。
+0.2 更新：Qwen3-Embedding-0.6B 已核对文件哈希并在本项目数据集上评测，见 [MODELS.md](MODELS.md) 与 [EVALUATION.md](EVALUATION.md)；仍不捆绑模型权重。

@@ -1,47 +1,104 @@
-# Architecture and operations / 架构与运维
+# Architecture
 
 ```text
-host event / user request
-          |
-     capture / remember
-          |
- SQLite transaction + outbox -----> retryable Markdown mirror
-          |
- pending -> human review -> approved
-                              |
-                lexical + optional embeddings
-                              |
-                   cited evidence -> client answer
-                              |
-                    read-only local mind graph
+ INGEST     MCP capture/remember | CLI | Markdown inbox + mirror edits | document import | session archive (hooks, JSONL)
+              |                                  everything an agent or a file supplies enters as PENDING
+              v
+ NORMALIZE  validation and limits | secret screening (reject single memories, redact bulk imports)
+            duplicate detection (normalised digest -> "sighting", independent support counted)
+              v
+ STORE      SQLite, WAL, schema v2 (single source of truth)
+            memories (memory | chunk), documents, sessions + turns, edges, sightings, audit, outbox,
+            embeddings (float32 BLOB + model fingerprint), models (descriptor + canary), judgements, meta
+              |                     |                         |                          |
+              v                     v                         v                          v
+ DERIVED    Markdown mirror      memory_fts / turns_fts    vector matrix cache        review aids
+            (outbox, atomic      (CJK bigram analyzer,     (generation counter       (judge advice cache,
+             replace, retried)    approved states only)     maintained by triggers)   similar memories, calibration)
+              |
+ LIFECYCLE  pending -> approved | rejected;  approved -> archived | superseded;  -> deleted (forget) -> purged
+            supersedes edges enforced on approval; contradictions surfaced, never auto-resolved
+              v
+ RETRIEVAL  lexical (FTS5 BM25)  +  vector (exact top-k, native or Python)  ->  RRF (vector-first, lexical backfill)
+            scopes: project + ":user"; filters: category, tags, kind, polarity, status
+              v
+ SURFACE    MCP tools | CLI | evidence packs (nonce-fenced, cited) | briefing | profile | viewer | eval harness
 ```
 
-## Contracts / 契约
+The three commitments of 0.1 hold: SQLite is the only primary store; automatic capture is a
+candidate, not a fact; the judge advises and never approves.
 
-- Automatic captures are pending. Only approved records appear in recall and graphs. Manual confirmation must reflect explicit user intent, not an agent's guess. 自动候选待审；只有已批准记录进入召回与图谱；manual确认必须反映真实用户意图。
-- Idempotency key: project + source + event_id. Reusing a key with different content is rejected. 幂等键为project/source/event_id，同键异文拒绝。
-- Categories: fact, decision, preference, procedure, lesson, knowledge. Relations: supports, contradicts, supersedes, related. 类别和关系为显式枚举；关系本身不会自动停用旧记录。
-- SQLite transactions serialize updates; Markdown failures leave outbox entries for retry. Rebuild derives mirrors from the database. SQLite事务保证更新顺序；镜像失败留待重试，rebuild从库重建。
-- Vectors are normalized and stored in SQLite; small-scale linear cosine scans and RRF are used, not a production ANN service. 向量归一化后存SQLite，使用小规模线性余弦与RRF，不是生产ANN服务。
-- Provider identity currently includes endpoint/model with dimension/content compatibility checks, not a complete immutable model revision fingerprint. 当前模型指纹不是完整不可变revision，换模型别名时应重新索引。
-- Judge failure is fail-closed; no automatic approval. RAG generation is client-owned. Judge异常保持待审，生成由客户端负责。
+## Modules
 
-## Operational boundaries / 运维边界
+| Module | Responsibility |
+|---|---|
+| `schema.py` | DDL, migration runner (refuse newer, verified backup, single transaction, heal after downgrade), FTS rebuild |
+| `store.py` | Lifecycle, capture and dedupe, transitions, links, lexical recall, pagination, graph, purge |
+| `text.py` | NFKC normalisation, the bigram analyzer and query builder, secret screening and redaction, injection markers, token estimate |
+| `vectors.py` | float32 codec, Matryoshka truncation, exact top-k (Rust kernel when installed) |
+| `providers.py` | OpenAI-compatible HTTP client, sentence-transformers and llama.cpp backends, fingerprints |
+| `judge.py` | Prompt, schema, strict parser, calibration against review decisions |
+| `service.py` | Incremental indexing, canary checks, hybrid recall, evidence packs, judge orchestration, review queue, profile, briefing |
+| `ingest.py` | Markdown/text/PDF/bookmarks/JSONL import, document review |
+| `sessions.py` | Session/turn archive, Claude Code transcripts, host hook |
+| `mirror.py` | Mirror export, sync of edits into proposals, inbox |
+| `ops.py` | Restore, drill, compaction, purge wrapper, maintenance, doctor |
+| `evaluation.py` | Datasets, metrics, baseline comparison |
+| `server.py`, `__main__.py`, `web.py` | MCP, CLI and viewer surfaces |
+| `native/` | Optional Rust top-k kernel (PyO3) |
 
-The HTTP viewer binds only to loopback, checks Host, serves read-only routes, uses CSP and renders text without innerHTML. Do not expose it through a public reverse proxy. Local processes under the same OS account may access files; project scopes are not tenant ACLs.
+## Data model highlights
 
-网页仅回环绑定、校验Host、只读路由、使用CSP与文本渲染。不要通过公网反向代理暴露；同OS账号仍可访问文件，project不是租户ACL。
+- **memories** keeps every 0.1 column (`id, project, content, source, event_id, digest, mode, status,
+  category, tags, created, updated, version`) and adds `kind` (memory/chunk), `polarity`
+  (positive/negative), `norm_digest`, `doc_id`, `session_id`, `locator` (citable provenance),
+  `access_count`, `last_accessed`, `valid_until`. Columns were added with `ALTER TABLE`, so 0.1
+  rows migrate in place.
+- **Scopes.** A project is a namespace. The reserved scope `:user` holds durable personal
+  preferences and is searched together with every project; project results are marked
+  `scope: project` and take precedence in the profile. (`:` was invalid in 0.1 project names, so it
+  cannot collide with existing data.)
+- **Sightings** record each additional source that captured the same normalised content;
+  `support` (distinct sources) is shown to reviewers and in the profile. It is a corroboration signal,
+  not a truth score.
+- **Edges** are explicit and typed. `supersedes` is enforced (the older memory becomes `superseded`
+  once the newer one is approved); `contradicts` is surfaced in evidence packs and maintenance
+  reports for a human to resolve.
+- **Documents** group chunks for per-document review; re-importing a changed file creates a new
+  version that supersedes the old one on approval.
+- **Sessions/turns** are an archive (redacted, searchable, replayable) kept apart from curated memory.
 
-Backup uses SQLite's backup API and refuses existing targets. For recovery, stop all writers, copy the backup into a new empty data directory as memory.sqlite3, run health and rebuild, inspect the result, then repoint clients. Never overwrite an active database or copy only an active primary file while ignoring WAL.
+## Retrieval
 
-备份使用SQLite backup API并拒绝覆盖。恢复时停写，在新空目录放置备份并命名memory.sqlite3，执行health与rebuild，确认后切换客户端；不要覆盖运行中的库或忽略WAL。
+1. **Lexical.** Text is analysed by `text.analyze`: NFKC + casefold; runs of unspaced scripts (Han,
+   kana, Hangul, Thai, ...) become overlapping bigrams plus unigrams in a separate column; other text
+   stays as words. FTS5 with `porter unicode61` then indexes these terms. Queries are analysed the same
+   way, drop function words (English stopwords, Chinese stop characters), add a prefix match for Latin
+   words, and are OR-ed as quoted phrases (so user input is inert as FTS syntax). BM25 ranks, with
+   column weights terms 1.0, chars 0.4, tags 1.5. Only approved/archived/superseded rows are in the
+   index. This is not semantic search.
+2. **Vector** (when configured). The query is embedded with the model's query template (Qwen3:
+   `Instruct: {task}\nQuery:{text}`), compared exactly against the cached matrix of vectors whose
+   fingerprint matches the configured model and whose digest matches the memory.
+3. **Fusion.** RRF (k = 60) with weights lexical 0.01, vector 1.0, chosen on the dev split:
+   effectively vector order, with lexical breaking ties and backfilling memories that have no vector
+   yet. Each result reports `signals` (lexical rank, vector rank, similarity).
+4. **Degradation is explicit.** If embeddings are unavailable, drifted, or cover only part of the
+   scope, the response says so (`mode`, `warning`, `coverage`, `model_drift`) and lexical results are
+   still returned.
 
-## Limits / 限制
+## Model identity
 
-Indexing: up to 1,000 approved records per call. Graph: up to 1,000 nodes. Vector/literal candidates: up to 5,000. Content: up to 16,000 characters. Query: up to 1,000 characters. Budget is character-based, not token-exact.
+A vector space is identified by `emb-` + SHA-256 of the backend's descriptor (backend, model,
+revision, pooling, normalisation, document template, configured dimension) plus the observed output
+dimension. Query templates are recorded but not part of the fingerprint: they change query quality,
+not stored-vector compatibility. On first use per process, two canary texts (English and Chinese) are
+re-embedded and compared with the vectors stored at first index (cosine >= 0.995); a mismatch means a
+different model is being served under the same name, and the vector stage is disabled with a warning
+instead of mixing spaces.
 
-索引每次最多1,000条已审记录，图谱最多1,000节点，向量/字面候选最多5,000；正文16,000字符，查询1,000字符；上下文预算按字符而非精确token计算。
+## What was not built from the suggested shape
 
-Soft deletion retains database content and may leave copies in backups. Full erasure, multi-user authentication, edit/merge history, automatic host hooks, large-scale pagination and real-model evaluation remain future work.
-
-软删除保留数据库正文，备份也可能保留副本。完整擦除、多用户认证、编辑合并历史、自动hooks、大规模分页及真实模型评测仍属后续工作。
+Graph-walk retrieval, a reranking stage, automatic consolidation and automatic conflict resolution
+are absent on purpose; see docs/DECISIONS.md. Salience and decay are recorded (access counts, dates)
+and reported, but not used in ranking.

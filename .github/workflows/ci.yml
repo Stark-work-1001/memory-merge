@@ -1,0 +1,72 @@
+name: ci
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: tests (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install locked runtime dependencies
+        run: python -m pip install -r requirements-lock.txt
+      - name: Unit, integration, migration and retrieval-regression tests
+        run: python -m unittest discover -s tests -v
+        env:
+          PYTHONUTF8: "1"
+
+  native:
+    name: native kernel (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements-lock.txt
+      - name: Build and install the Rust extension and optional extras
+        run: python -m pip install ./native "pypdf>=4"
+      - name: Kernel equivalence, service and PDF import tests with native kernel and extras
+        run: python -m unittest tests.test_text_vectors tests.test_service tests.test_ingest_sync_sessions -v
+      - name: Benchmark smoke run (small sizes)
+        run: python bench/vector_bench.py --sizes 1000,10000 --dims 256
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install build
+      - run: python -m build
+      - name: Install the wheel into a clean environment and run it
+        run: |
+          python -m venv /tmp/clean
+          /tmp/clean/bin/pip install -r requirements-lock.txt dist/*.whl
+          MM_DATA=/tmp/mm /tmp/clean/bin/memory-merge demo
+          MM_DATA=/tmp/mm /tmp/clean/bin/memory-merge doctor
+          MM_DATA=/tmp/mm /tmp/clean/bin/memory-merge drill
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t memory-merge-local .
+      - name: Container smoke test (CLI inside the image)
+        run: docker run --rm --entrypoint memory-merge memory-merge-local health

@@ -1,28 +1,43 @@
-# Releasing / 发布流程
+# Releasing
 
-## Local release / 本地Release
+One version string, defined in `memory_merge/__init__.py` (PEP 440, e.g. `0.2.0a1`). The git tag is
+`v` + that string (`v0.2.0a1`). `pyproject.toml` reads the version from the code; `tools/release.py`
+refuses to build if `CHANGELOG.md` or the release notes name a different version.
 
-Version: `v0.1.0-alpha.1`; Python metadata: `0.1.0a1`. This is the first public-delivery candidate, not a claim that the earlier research prototype was a stable release. 这是首次公开交付候选，不将研究原型视为稳定版本。
+(0.1 shipped with three strings for one release: tag `0.1.0`, documents `v0.1.0-alpha.1`, package
+`0.1.0a1`. They all denote the same code; see CHANGELOG.md.)
 
-From the repository root with dependencies installed / 在项目根目录和已安装依赖的环境运行：
+## Build
 
-```shell
+```bash
 python tools/release.py
 ```
 
-The builder uses an explicit allowlist, rejects unexpected files (except documented runtime caches/environments/output), scans text, validates local documentation links and versions, runs source tests, creates a fixed-metadata ZIP, extracts it to a temporary directory, compares file hashes, and reruns tests. It writes the ZIP, SHA256SUMS, RELEASE_MANIFEST.json and RELEASE_VALIDATION.json to the repository root. Test output with machine paths is not distributed; failures stop packaging and report details only to the invoking console.
+The script:
 
-构建器使用白名单，拒绝非预期文件（明确的运行缓存、环境及输出除外），扫描文本、检查链接和版本，运行源码测试，生成固定元数据ZIP，临时解包并逐文件比对哈希，再运行测试。输出ZIP、校验和、逐文件清单与脱敏验证报告；含机器路径的测试原始输出不分发，失败停止打包并只在本机控制台报告。
+1. collects files by allowlist (`INCLUDE` patterns) and fails on any unexpected file, symlink or CRLF
+   line ending (hashes must not depend on the checkout platform; `.gitattributes` pins LF);
+2. scans every included file for machine paths, emails, phone numbers, token patterns and private
+   markers (per-file exemptions only for path-validation test fixtures);
+3. checks the version in CHANGELOG.md and both release notes, and that local Markdown links resolve;
+4. runs the full test suite from the checkout;
+5. builds a ZIP with fixed metadata twice and requires identical bytes;
+6. verifies every archive entry against its source, unpacks it, and runs the test suite again from the
+   unpacked tree;
+7. writes `dist/memory-merge-vX-source.zip`, `dist/SHA256SUMS`, `dist/RELEASE_VALIDATION.json`;
+   the per-file manifest is inside the archive as `RELEASE_MANIFEST.json`.
 
-The archive contains one versioned top-level folder. No Git history, personal client configuration, data or virtual environment is included. Determinism assumes the same source bytes and Python/zlib environment. 校验ZIP只包含一个版本目录；无Git历史、私人配置、数据或虚拟环境。同源码与相同Python/zlib环境下可重建一致结果。
+Nothing is uploaded or tagged.
 
-## Before online publishing / 在线发布前
+## Publish (manual)
 
-1. Select an original-work license and add LICENSE. If source changes, rebuild. 由权利人选择原创许可；变更后重建。
-2. Review public attribution and privacy exclusions. Do not commit personal configuration or old research snapshots. 检查公开归属与隐私，不提交私人配置或旧快照。
-3. Create a repository under the intended account. Verify remote and Git identity locally; this bundle deliberately has neither. 自行确认目标账号、远程与提交身份，本包不携带这些信息。
-4. Commit reviewed source and tag the release `v0.1.0-alpha.1`. Tags are not created by the local archive builder. 审查提交后创建标签，打包器不伪造Git标签。
-5. Create a GitHub Release with **Pre-release** enabled; use the provided bilingual notes and attach the ZIP and checksum. 创建预发布，附双语notes、ZIP与校验值。
-6. Download the uploaded asset and verify its SHA-256. 上传后下载核对哈希。
+1. Commit, push, and let CI pass on all three platforms.
+2. `git tag v0.2.0a1 && git push origin v0.2.0a1`.
+3. Create a GitHub Release from the tag, **mark it Pre-release** for any `a`/`b`/`rc` version, attach
+   the ZIP and `SHA256SUMS`, paste `RELEASE_NOTES.en.md` and `RELEASE_NOTES.zh-CN.md`.
+4. Download the attached ZIP and compare its SHA-256 with `SHA256SUMS`.
+5. Optional: build the wheel (`python -m build`) and publish to PyPI; the package name is
+   `memory-merge-local`. Not done for 0.2.0a1.
 
-No GitHub upload, remote tag or package-registry publication is performed by this preparation. 此准备工作不执行GitHub上传、远程标签或包仓库发布。
+The published 0.1 release (`memory-merge-v0.1.0-alpha.1`) is marked as a full release although its
+own guide asked for Pre-release; correcting that flag on GitHub is a manual step for the maintainer.

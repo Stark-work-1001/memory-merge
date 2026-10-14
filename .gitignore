@@ -1,0 +1,33 @@
+# Personal data must never be committed: this project stores private memories by design.
+data/
+demo-data/
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+backups/
+markdown/
+.env
+.env.*
+*.key
+*.pem
+*.log
+
+# Python / build
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+
+# Rust native extension
+native/target/
+*.pyd
+*.so
+
+# Evaluation outputs (results are reproduced, not stored)
+bench/results/
